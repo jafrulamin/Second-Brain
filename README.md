@@ -85,4 +85,4 @@ rg "search-term" notes/
 
 ---
 
-For questions about structure or templates, create an issue or add a note to `/notes/00-system.md`.
+For questions about structure or templates, create an issue or add a note to `/notes/00-system.md`.- Day 2: Auth route stub, documents table in Neon, Blob store created
