@@ -1,6 +1,6 @@
 /**
- * Day 1: planning only. Provider is sqlite for local-first dev.
- * Models will be added on Day 2 when we persist documents/chunks/embeddings.
+ * Day 2: Document persistence for PDF uploads.
+ * Provider is sqlite for local-first dev.
  */
 generator client {
   provider = "prisma-client-js"
@@ -11,8 +11,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Models will be defined tomorrow:
-// model Document { ... }
-// model Chunk    { ... }
-// model Embedding { ... }
+model Document {
+  id           Int      @id @default(autoincrement())
+  filename     String
+  originalPath String
+  sizeBytes    Int
+  createdAt    DateTime @default(now())
+}
 
