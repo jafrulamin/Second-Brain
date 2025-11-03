@@ -4,7 +4,7 @@
 
 import { mkdir, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 
 /**
  * Ensures the upload directory exists, creating it if necessary
@@ -74,5 +74,14 @@ export async function savePdfToDisk(
     safeFilename: uniqueFilename,
     sizeBytes: buffer.length,
   };
+}
+
+/**
+ * Resolve a file path to absolute path from project root
+ * @param filePath - Relative or absolute file path
+ * @returns Absolute path
+ */
+export function resolveFilePath(filePath: string): string {
+  return resolve(process.cwd(), filePath);
 }
 

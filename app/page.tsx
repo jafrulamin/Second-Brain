@@ -5,6 +5,7 @@
 
 import { prisma } from '@/lib/db';
 import InlineUpload from '@/components/InlineUpload';
+import EmbedButton from '@/components/EmbedButton';
 
 export default async function Page() {
   // Query all documents from database, sorted by most recent first
@@ -69,6 +70,7 @@ export default async function Page() {
                 <th style={{ padding: '12px', borderBottom: '2px solid #ddd' }}>Size</th>
                 <th style={{ padding: '12px', borderBottom: '2px solid #ddd' }}>Uploaded</th>
                 <th style={{ padding: '12px', borderBottom: '2px solid #ddd' }}>Path</th>
+                <th style={{ padding: '12px', borderBottom: '2px solid #ddd' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -82,6 +84,9 @@ export default async function Page() {
                   </td>
                   <td style={{ padding: '12px', fontSize: '12px', color: '#999' }}>
                     {doc.originalPath}
+                  </td>
+                  <td style={{ padding: '12px' }}>
+                    <EmbedButton documentId={doc.id} filename={doc.filename} />
                   </td>
                 </tr>
               ))}

@@ -17,5 +17,30 @@ model Document {
   originalPath String
   sizeBytes    Int
   createdAt    DateTime @default(now())
+  chunks       Chunk[]
+}
+
+model Chunk {
+  id          Int         @id @default(autoincrement())
+  documentId  Int
+  chunkIndex  Int
+  text        String
+  tokenCount  Int
+  createdAt   DateTime    @default(now())
+  document    Document    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  embeddings  Embedding[]
+
+  @@index([documentId])
+}
+
+model Embedding {
+  id        Int      @id @default(autoincrement())
+  chunkId   Int
+  vector    Json
+  model     String
+  createdAt DateTime @default(now())
+  chunk     Chunk    @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
+  @@index([chunkId])
 }
 
