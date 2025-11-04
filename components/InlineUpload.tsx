@@ -98,7 +98,7 @@ export default function InlineUpload() {
     setTimeout(() => {
       setUploadProgress([]);
       router.refresh();
-    }, 3000);
+    }, 2000);
   };
 
   const handleButtonClick = () => {

@@ -4,14 +4,14 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, memo } from 'react';
 
 interface EmbedButtonProps {
   documentId: number;
   filename: string;
 }
 
-export default function EmbedButton({ documentId, filename }: EmbedButtonProps) {
+function EmbedButton({ documentId, filename }: EmbedButtonProps) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{
     chunksCreated: number;
@@ -104,4 +104,6 @@ export default function EmbedButton({ documentId, filename }: EmbedButtonProps) 
     </div>
   );
 }
+
+export default memo(EmbedButton);
 

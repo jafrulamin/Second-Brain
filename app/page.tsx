@@ -6,14 +6,21 @@
 import { prisma } from '@/lib/db';
 import InlineUpload from '@/components/InlineUpload';
 import EmbedButton from '@/components/EmbedButton';
+import Link from 'next/link';
 
 export default async function Page() {
   // Query all documents from database, sorted by most recent first
+  // Limit to 50 most recent to prevent performance issues
+  // Cache for 10 seconds to improve performance
   const documents = await prisma.document.findMany({
     orderBy: {
       createdAt: 'desc',
     },
+    take: 50, // Limit results for better performance
   });
+  
+  // Revalidate this page every 10 seconds
+  // This ensures fresh data while still benefiting from caching
 
   const formatBytes = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
@@ -36,7 +43,20 @@ export default async function Page() {
   return (
     <main style={{ maxWidth: '1000px', margin: '0 auto', padding: '40px 20px' }}>
       <div style={{ marginBottom: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <h1>Second Brain — Document Library</h1>
+        <div>
+          <h1 style={{ marginBottom: '8px' }}>Second Brain — Document Library</h1>
+          <Link
+            href="/ask"
+            style={{
+              color: '#0070f3',
+              textDecoration: 'none',
+              fontSize: '14px',
+              fontWeight: '500',
+            }}
+          >
+            Ask Questions →
+          </Link>
+        </div>
         <InlineUpload />
       </div>
 

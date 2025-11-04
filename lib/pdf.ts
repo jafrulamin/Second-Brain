@@ -12,17 +12,16 @@ import { readFile } from 'fs/promises';
  */
 export async function extractTextFromPdf(filePath: string): Promise<{ text: string; pages: number }> {
   try {
-    console.log('[PDF] Reading PDF file...');
     const dataBuffer = await readFile(filePath);
     
-    console.log('[PDF] Loading pdf-parse module...');
     // pdf-parse v1 has a simple default export
     const pdfParse = (await import('pdf-parse')).default;
     
-    console.log('[PDF] Parsing PDF...');
     const data = await pdfParse(dataBuffer);
     
-    console.log(`[PDF] Success! Text length: ${data.text.length}, Pages: ${data.numpages}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[PDF] Extracted ${data.text.length} chars from ${data.numpages} pages`);
+    }
     
     return {
       text: data.text,

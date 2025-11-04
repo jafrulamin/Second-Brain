@@ -12,7 +12,9 @@ declare global {
 }
 
 // Use global.prisma in development to avoid creating multiple instances during hot reload
-export const prisma = global.prisma || new PrismaClient();
+export const prisma = global.prisma || new PrismaClient({
+  log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+});
 
 // In development, store the client on global to reuse across hot reloads
 if (process.env.NODE_ENV !== 'production') {

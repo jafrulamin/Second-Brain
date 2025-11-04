@@ -359,7 +359,136 @@ Health check endpoint.
 - ✅ **Offline** - Works without internet
 - ✅ **Flexible** - Easy to swap models
 
+## Day 4 - RAG Q&A with Local LLM (FREE)
+
+### Overview
+Ask questions about your documents! The system uses:
+- **Similarity Search**: Finds relevant chunks using cosine similarity
+- **Local LLM**: Generates answers using Ollama (llama3, mistral, etc.)
+- **Source Citations**: Shows which chunks were used
+
+### Prerequisites
+
+**1. Pull an LLM model:**
+```bash
+# Option 1: Llama 3 (recommended, ~4.7GB)
+ollama pull llama3
+
+# Option 2: Mistral (smaller, ~4.1GB)
+ollama pull mistral
+
+# Option 3: Any other Ollama model
+ollama pull <model-name>
+```
+
+**2. Configure environment:**
+Update `.env.local`:
+```bash
+OLLAMA_LLM_MODEL=llama3  # or your chosen model
+TOP_K=5                  # Number of chunks to retrieve
+MAX_CONTEXT_CHARS=3000   # Max context size for LLM
+```
+
+### Usage
+
+**1. Start services:**
+```bash
+# Terminal 1: Ollama server
+ollama serve
+
+# Terminal 2: Your app
+npm run dev
+```
+
+**2. Ask questions:**
+- Go to `http://localhost:3000/ask`
+- Or click "Ask Questions →" on the home page
+- Type your question and click "Ask"
+
+**3. Example questions:**
+- "What is the main idea in my notes?"
+- "Summarize the key points from the documents"
+- "What did I learn about blockchain?"
+
+### How It Works
+
+1. **Question Embedding**: Your question is converted to a vector
+2. **Similarity Search**: Finds top-K most similar chunks (cosine similarity)
+3. **Context Building**: Selected chunks are formatted into context
+4. **LLM Generation**: Local Ollama LLM generates an answer using the context
+5. **Response**: Returns answer + source citations
+
+### Configuration Knobs
+
+**`TOP_K`** (default: 5)
+- Number of chunks to retrieve for context
+- Higher = more context, but may include irrelevant info
+- Lower = more focused, but may miss important details
+
+**`MAX_CONTEXT_CHARS`** (default: 3000)
+- Maximum characters in the context sent to LLM
+- Prevents context overflow
+- Adjust based on your LLM's context window
+
+### Troubleshooting
+
+**Error: "Ollama LLM model not found"**
+```bash
+# Solution: Pull the model
+ollama pull llama3  # or your chosen model
+
+# Verify it's available
+ollama list
+```
+
+**Error: "Cannot connect to Ollama server"**
+```bash
+# Solution: Start Ollama
+ollama serve
+```
+
+**Error: "No embedded content yet"**
+- Embed at least one document first using the "Embed" button on the home page
+
+**Slow responses?**
+- LLM generation can take 10-30 seconds depending on model size
+- Smaller models (mistral) are faster but less accurate
+- Larger models (llama3) are slower but more accurate
+
+### API Endpoint
+
+**POST `/api/query`**
+```json
+{
+  "question": "What is the main idea?"
+}
+```
+
+**Response:**
+```json
+{
+  "answer": "Based on the documents...",
+  "sources": [
+    {
+      "documentId": 1,
+      "filename": "document.pdf",
+      "chunkIndex": 0
+    }
+  ],
+  "used": {
+    "k": 5,
+    "model": "llama3"
+  }
+}
+```
+
+**Test with curl:**
+```bash
+curl -X POST http://localhost:3000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What is the main idea in my notes?"}'
+```
+
 ## Next Steps
-- Day 4: Implement semantic search and Q&A pipeline
 - Day 5: Polish UI and optional deployment
 

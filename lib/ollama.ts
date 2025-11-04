@@ -5,6 +5,7 @@
 
 const OLLAMA_BASE = process.env.OLLAMA_BASE || 'http://localhost:11434';
 const OLLAMA_EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL || 'all-minilm';
+const OLLAMA_LLM_MODEL = process.env.OLLAMA_LLM_MODEL || 'llama3';
 
 // Batch size for embedding requests (Ollama can handle more, but we'll be conservative)
 const BATCH_SIZE = 64;
@@ -19,14 +20,15 @@ export async function embedWithOllama(texts: string[]): Promise<number[][]> {
     return [];
   }
 
-  console.log(`[Ollama] Embedding ${texts.length} texts using model: ${OLLAMA_EMBED_MODEL}`);
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[Ollama] Embedding ${texts.length} texts using model: ${OLLAMA_EMBED_MODEL}`);
+  }
   
   const allEmbeddings: number[][] = [];
   
   // Process in batches
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {
     const batch = texts.slice(i, Math.min(i + BATCH_SIZE, texts.length));
-    console.log(`[Ollama] Processing batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} texts)`);
     
     try {
       const response = await fetch(`${OLLAMA_BASE}/api/embed`, {
@@ -83,7 +85,9 @@ export async function embedWithOllama(texts: string[]): Promise<number[][]> {
     }
   }
 
-  console.log(`[Ollama] Successfully generated ${allEmbeddings.length} embeddings`);
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[Ollama] Successfully generated ${allEmbeddings.length} embeddings`);
+  }
   return allEmbeddings;
 }
 
@@ -99,5 +103,79 @@ export function getOllamaModel(): string {
  */
 export function getOllamaBase(): string {
   return OLLAMA_BASE;
+}
+
+/**
+ * Generate text using a local Ollama LLM
+ * @param prompt - The prompt to send to the LLM
+ * @returns Generated text response
+ */
+export async function generateWithOllama(prompt: string): Promise<string> {
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[Ollama] Generating response using model: ${OLLAMA_LLM_MODEL}`);
+  }
+
+  try {
+    // Limit prompt length to prevent memory issues
+    const maxPromptLength = 8000; // Characters
+    const truncatedPrompt = prompt.length > maxPromptLength 
+      ? prompt.substring(0, maxPromptLength) + '\n\n[Context truncated...]'
+      : prompt;
+
+    const response = await fetch(`${OLLAMA_BASE}/api/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: OLLAMA_LLM_MODEL,
+        prompt: truncatedPrompt,
+        stream: false,
+        options: {
+          num_predict: 500, // Limit response length to prevent hanging
+          temperature: 0.7,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+
+      // Handle connection errors
+      if (errorText.includes('ECONNREFUSED') || response.status === 0) {
+        throw new Error(`Cannot connect to Ollama server at ${OLLAMA_BASE}. Start Ollama: \`ollama serve\``);
+      }
+
+      // Handle model not found
+      if (response.status === 404 || errorText.includes('model') || errorText.includes('not found')) {
+        throw new Error(`Ollama LLM model "${OLLAMA_LLM_MODEL}" not found. Pull LLM model: \`ollama pull ${OLLAMA_LLM_MODEL}\``);
+      }
+
+      throw new Error(`Ollama API error (${response.status}): ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.response || typeof data.response !== 'string') {
+      throw new Error('Invalid response from Ollama: missing response field');
+    }
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Ollama] Successfully generated response (${data.response.length} chars)`);
+    }
+    return data.response;
+  } catch (error: any) {
+    // Handle connection errors
+    if (error.code === 'ECONNREFUSED' || error.message?.includes('ECONNREFUSED')) {
+      throw new Error(`Cannot connect to Ollama server at ${OLLAMA_BASE}. Start Ollama: \`ollama serve\``);
+    }
+
+    if (error.cause?.code === 'ECONNREFUSED') {
+      throw new Error(`Cannot connect to Ollama server at ${OLLAMA_BASE}. Start Ollama: \`ollama serve\``);
+    }
+
+    // Re-throw other errors (they already have helpful messages)
+    throw error;
+  }
 }
 

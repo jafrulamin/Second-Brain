@@ -29,8 +29,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[Embed] Starting embedding process for document ${documentId}`);
-
     // Check if document is already embedded (prevent duplicates)
     const existingChunks = await prisma.chunk.findFirst({
       where: { documentId },
@@ -55,11 +53,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[Embed] Found document: ${document.filename}`);
-
     // Resolve absolute path to the PDF file
     const filePath = resolveFilePath(document.originalPath);
-    console.log(`[Embed] Reading PDF from: ${filePath}`);
 
     // Check if file path is valid
     if (!document.originalPath) {
@@ -80,13 +75,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Extract text from PDF (pdf-parse v2 can read directly from file path)
-    console.log(`[Embed] Extracting text from PDF...`);
+    // Extract text from PDF
     let pdfText: string;
     try {
       const pdfData = await extractTextFromPdf(filePath);
       pdfText = pdfData.text;
-      console.log(`[Embed] Extracted ${pdfText.length} characters of text from ${pdfData.pages} pages`);
     } catch (error) {
       console.error(`[Embed] Error parsing PDF:`, error);
       return NextResponse.json(
@@ -105,7 +98,6 @@ export async function POST(request: NextRequest) {
 
     // Chunk the text
     const chunks = chunkText(pdfText, 1500, 200);
-    console.log(`[Embed] Created ${chunks.length} chunks`);
 
     if (chunks.length === 0) {
       return NextResponse.json(
@@ -115,7 +107,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert all chunks into database
-    console.log(`[Embed] Inserting ${chunks.length} chunks into database...`);
     const chunkRecords = await prisma.chunk.createMany({
       data: chunks.map((chunk) => ({
         documentId: documentId,
@@ -125,8 +116,6 @@ export async function POST(request: NextRequest) {
       })),
     });
 
-    console.log(`[Embed] Inserted ${chunkRecords.count} chunk records`);
-
     // Retrieve the inserted chunks to get their IDs
     const insertedChunks = await prisma.chunk.findMany({
       where: { documentId: documentId },
@@ -135,7 +124,6 @@ export async function POST(request: NextRequest) {
 
     // Create embeddings for all chunks using local Ollama
     const modelName = getOllamaModel();
-    console.log(`[Embed] Generating embeddings using local Ollama model: ${modelName}...`);
     
     // Extract chunk texts for embedding
     const chunkTexts = insertedChunks.map((c) => c.text);
@@ -144,7 +132,6 @@ export async function POST(request: NextRequest) {
     let embeddingVectors: number[][];
     try {
       embeddingVectors = await embedWithOllama(chunkTexts);
-      console.log(`[Embed] Generated ${embeddingVectors.length} embeddings`);
     } catch (error: any) {
       console.error(`[Embed] Error generating embeddings:`, error);
       
@@ -187,7 +174,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert all embeddings into database
-    console.log(`[Embed] Inserting ${embeddingVectors.length} embeddings into database...`);
     const embeddingRecords = await prisma.embedding.createMany({
       data: insertedChunks.map((chunk, index) => ({
         chunkId: chunk.id,
@@ -195,9 +181,6 @@ export async function POST(request: NextRequest) {
         model: modelName,
       })),
     });
-
-    console.log(`[Embed] Inserted ${embeddingRecords.count} embedding records`);
-    console.log(`[Embed] ✓ Embedding process complete for document ${documentId}`);
 
     // Return success response with counts
     return NextResponse.json({
