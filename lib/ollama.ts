@@ -106,6 +106,122 @@ export function getOllamaBase(): string {
 }
 
 /**
+ * Generate text using a local Ollama LLM with streaming support
+ * @param prompt - The prompt to send to the LLM
+ * @param signal - Optional AbortSignal for cancellation
+ * @returns Async generator that yields response chunks
+ */
+export async function* generateStreamWithOllama(
+  prompt: string,
+  signal?: AbortSignal
+): AsyncGenerator<string, void, unknown> {
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[Ollama] Streaming response using model: ${OLLAMA_LLM_MODEL}`);
+  }
+
+  // Limit prompt length to prevent memory issues
+  const maxPromptLength = 8000;
+  const truncatedPrompt = prompt.length > maxPromptLength 
+    ? prompt.substring(0, maxPromptLength) + '\n\n[Context truncated...]'
+    : prompt;
+
+  try {
+    const response = await fetch(`${OLLAMA_BASE}/api/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: OLLAMA_LLM_MODEL,
+        prompt: truncatedPrompt,
+        stream: true,
+        options: {
+          num_predict: 500,
+          temperature: 0.7,
+        },
+      }),
+      signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+
+      if (errorText.includes('ECONNREFUSED') || response.status === 0) {
+        throw new Error(`Cannot connect to Ollama server at ${OLLAMA_BASE}. Start Ollama: \`ollama serve\``);
+      }
+
+      if (response.status === 404 || errorText.includes('model') || errorText.includes('not found')) {
+        throw new Error(`Ollama LLM model "${OLLAMA_LLM_MODEL}" not found. Pull LLM model: \`ollama pull ${OLLAMA_LLM_MODEL}\``);
+      }
+
+      throw new Error(`Ollama API error (${response.status}): ${errorText}`);
+    }
+
+    if (!response.body) {
+      throw new Error('Response body is null');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        
+        // Keep the last incomplete line in the buffer
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.trim() === '') continue;
+
+          try {
+            const data = JSON.parse(line);
+            if (data.response) {
+              yield data.response;
+            }
+            
+            // Check if streaming is complete
+            if (data.done) {
+              if (process.env.NODE_ENV === 'development') {
+                console.log('[Ollama] Streaming completed');
+              }
+              return;
+            }
+          } catch (parseError) {
+            console.error('[Ollama] Failed to parse JSON line:', line, parseError);
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  } catch (error: any) {
+    // Handle abort
+    if (error.name === 'AbortError') {
+      console.log('[Ollama] Stream aborted by user');
+      return;
+    }
+
+    // Handle connection errors
+    if (error.code === 'ECONNREFUSED' || error.message?.includes('ECONNREFUSED')) {
+      throw new Error(`Cannot connect to Ollama server at ${OLLAMA_BASE}. Start Ollama: \`ollama serve\``);
+    }
+
+    if (error.cause?.code === 'ECONNREFUSED') {
+      throw new Error(`Cannot connect to Ollama server at ${OLLAMA_BASE}. Start Ollama: \`ollama serve\``);
+    }
+
+    throw error;
+  }
+}
+
+/**
  * Generate text using a local Ollama LLM
  * @param prompt - The prompt to send to the LLM
  * @returns Generated text response

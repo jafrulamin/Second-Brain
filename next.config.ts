@@ -13,6 +13,9 @@ const nextConfig: NextConfig = {
       fullUrl: process.env.NODE_ENV === 'development',
     },
   },
+  
+  // React strict mode for better debugging
+  reactStrictMode: true,
 };
 
 export default nextConfig;

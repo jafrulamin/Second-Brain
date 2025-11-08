@@ -1,5 +1,6 @@
 /**
  * Day 2: Document persistence for PDF uploads.
+ * Day 4+: Conversation-scoped documents, messages, and sources.
  * Provider is sqlite for local-first dev.
  */
 generator client {
@@ -11,13 +12,50 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Conversation {
+  id        Int       @id @default(autoincrement())
+  title     String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  messages  Message[]
+  documents Document[]
+}
+
+model Message {
+  id             Int             @id @default(autoincrement())
+  conversationId Int
+  role           String          // 'user' | 'assistant'
+  content        String
+  createdAt      DateTime        @default(now())
+  conversation   Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sources        MessageSource[]
+
+  @@index([conversationId])
+}
+
+model MessageSource {
+  id         Int     @id @default(autoincrement())
+  messageId  Int
+  documentId Int
+  chunkId    Int
+  filename   String
+  chunkIndex Int
+  message    Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
 model Document {
-  id           Int      @id @default(autoincrement())
-  filename     String
-  originalPath String
-  sizeBytes    Int
-  createdAt    DateTime @default(now())
-  chunks       Chunk[]
+  id             Int           @id @default(autoincrement())
+  filename       String
+  originalPath   String
+  sizeBytes      Int
+  createdAt      DateTime      @default(now())
+  conversationId Int?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  chunks         Chunk[]
+
+  @@index([conversationId])
 }
 
 model Chunk {

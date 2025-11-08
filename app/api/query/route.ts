@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   try {
     // Parse request body
     const body = await request.json();
-    const { question } = body;
+    const { question, conversationId } = body;
 
     // Validate question
     if (!question || typeof question !== 'string' || question.trim().length === 0) {
@@ -34,12 +34,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if there are any chunks in the database
-    const chunkCount = await prisma.chunk.count();
-    if (chunkCount === 0) {
+    // Validate conversationId
+    if (!conversationId || typeof conversationId !== 'number') {
       return NextResponse.json(
-        { error: 'No embedded content yet. Please embed some documents first.' },
-        { status: 422 }
+        { error: 'No conversationId. Create a chat first.' },
+        { status: 400 }
+      );
+    }
+
+    // Check if conversation exists
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+    });
+
+    if (!conversation) {
+      return NextResponse.json(
+        { error: `Conversation with id ${conversationId} not found` },
+        { status: 404 }
       );
     }
 
@@ -53,11 +64,17 @@ export async function POST(request: NextRequest) {
     }
     const queryVector = questionEmbeddings[0];
 
-    // Fetch embeddings with their chunk and document data
-    // Limit to MAX_EMBEDDINGS_SEARCH to prevent memory issues
-    // Use most recent embeddings first (they're likely more relevant)
+    // Fetch embeddings filtered by conversationId
+    // Only include embeddings from documents belonging to this conversation
     const embeddings = await prisma.embedding.findMany({
       take: MAX_EMBEDDINGS_SEARCH,
+      where: {
+        chunk: {
+          document: {
+            conversationId: conversationId,
+          },
+        },
+      },
       orderBy: {
         createdAt: 'desc', // Most recent first
       },
@@ -67,6 +84,7 @@ export async function POST(request: NextRequest) {
             document: {
               select: {
                 filename: true,
+                conversationId: true,
               },
             },
           },
@@ -76,7 +94,7 @@ export async function POST(request: NextRequest) {
 
     if (embeddings.length === 0) {
       return NextResponse.json(
-        { error: 'No embeddings found in database' },
+        { error: 'No embedded content in this conversation yet. Upload some documents first.' },
         { status: 422 }
       );
     }
@@ -157,17 +175,66 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build sources with documentId
+    // Build sources with documentId and chunkId
     const sourcesWithDocId = sources.map((s) => {
       const matchedChunk = chosen.find(
         (c) => c.filename === s.filename && c.chunkIndex === s.chunkIndex
       );
       return {
         documentId: matchedChunk?.docId || 0,
+        chunkId: matchedChunk?.id || 0, // 'id' field is the chunkId
         filename: s.filename,
         chunkIndex: s.chunkIndex,
       };
     });
+
+    // Persist messages to database
+    try {
+      // Create user message
+      const userMessage = await prisma.message.create({
+        data: {
+          conversationId: conversationId,
+          role: 'user',
+          content: question,
+        },
+      });
+      console.log('[Query] Created user message:', userMessage.id);
+
+      // Create assistant message
+      const assistantMessage = await prisma.message.create({
+        data: {
+          conversationId: conversationId,
+          role: 'assistant',
+          content: answer.trim(),
+        },
+      });
+      console.log('[Query] Created assistant message:', assistantMessage.id);
+
+      // Create message sources
+      const messageSources = await Promise.all(
+        sourcesWithDocId.map((source) =>
+          prisma.messageSource.create({
+            data: {
+              messageId: assistantMessage.id,
+              documentId: source.documentId,
+              chunkId: source.chunkId,
+              filename: source.filename,
+              chunkIndex: source.chunkIndex,
+            },
+          })
+        )
+      );
+      console.log('[Query] Created', messageSources.length, 'message sources');
+
+      // Update conversation's updatedAt timestamp
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: { updatedAt: new Date() },
+      });
+    } catch (dbError) {
+      console.error('[Query] Error persisting messages to database:', dbError);
+      // Continue anyway - the user still gets their answer
+    }
 
     // Return success response
     return NextResponse.json({
