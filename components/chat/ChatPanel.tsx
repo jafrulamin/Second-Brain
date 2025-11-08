@@ -37,6 +37,67 @@ export default function ChatPanel({
     console.log('[ChatPanel] messages state changed, now has', messages.length, 'messages');
   }, [messages]);
 
+  // Listen for auto-send-files event from InputBar
+  useEffect(() => {
+    const handleAutoSendFiles = async (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { conversationId: eventConvId, attachments } = customEvent.detail;
+      
+      console.log('[ChatPanel] Auto-send-files event received:', eventConvId, attachments);
+      
+      if (!eventConvId || !attachments || attachments.length === 0) {
+        return;
+      }
+      
+      const fileCount = attachments.length;
+      const fileNames = attachments.map((f: any) => f.filename).join(', ');
+      
+      // Create user message showing uploaded files
+      const userMessage: Message = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: `📎 Uploaded ${fileCount} file${fileCount > 1 ? 's' : ''}`,
+        timestamp: new Date(),
+        status: 'delivered',
+        attachments: attachments,
+      };
+      
+      setMessages((prev) => [...prev, userMessage]);
+      
+      // Create welcome assistant message
+      const welcomeMessage = `Perfect! I've received your ${fileCount > 1 ? 'files' : 'file'}: ${fileNames}. ${fileCount > 1 ? 'They have' : 'It has'} been processed and embedded successfully. I'm now ready to help you understand, analyze, or answer any questions about ${fileCount > 1 ? 'these documents' : 'this document'}. What would you like to know?`;
+      
+      const assistantMessage: Message = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: welcomeMessage,
+        timestamp: new Date(),
+        status: 'delivered',
+      };
+      
+      setMessages((prev) => [...prev, assistantMessage]);
+      
+      // Persist these messages to database
+      try {
+        await fetch('/api/save-messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question: `📎 Uploaded ${fileCount} file${fileCount > 1 ? 's' : ''}: ${fileNames}`,
+            answer: welcomeMessage,
+            conversationId: eventConvId,
+          }),
+        });
+        console.log('[ChatPanel] Saved file upload welcome messages for conversation:', eventConvId);
+      } catch (saveError) {
+        console.error('[ChatPanel] Failed to save welcome messages:', saveError);
+      }
+    };
+    
+    window.addEventListener('auto-send-files', handleAutoSendFiles);
+    return () => window.removeEventListener('auto-send-files', handleAutoSendFiles);
+  }, []);
+
   // Load conversation messages when selectedConversationId changes
   useEffect(() => {
     console.log('[ChatPanel] selectedConversationId changed to:', selectedConversationId);
@@ -86,16 +147,17 @@ export default function ChatPanel({
   }, [selectedConversationId]);
 
   const handleSend = useCallback(async (content: string, attachments?: { filename: string; sizeBytes: number }[]) => {
-    // Check if this is a file-only upload (no text content)
-    const isFileOnlyUpload = !content.trim() && attachments && attachments.length > 0;
+    // Don't allow empty messages (unless it's from the auto-send-files event which is handled separately)
+    if (!content.trim()) {
+      return;
+    }
     
     let activeConversationId = selectedConversationId;
     
     // If in draft mode, create a conversation first
     if (isDraft) {
       try {
-        const conversationTitle = content.substring(0, 50) || 
-          (attachments && attachments.length > 0 ? attachments[0].filename : 'New chat');
+        const conversationTitle = content.substring(0, 50) || 'New chat';
         
         const createResponse = await fetch('/api/conversations', {
           method: 'POST',
@@ -117,55 +179,6 @@ export default function ChatPanel({
         });
         return;
       }
-    }
-    
-    // If this is a file-only upload, show welcome message instead of calling LLM
-    if (isFileOnlyUpload) {
-      const fileCount = attachments.length;
-      const fileNames = attachments.map(f => f.filename).join(', ');
-      
-      // Create user message showing uploaded files
-      const userMessage: Message = {
-        id: `user-${Date.now()}`,
-        role: 'user',
-        content: `📎 Uploaded ${fileCount} file${fileCount > 1 ? 's' : ''}`,
-        timestamp: new Date(),
-        status: 'delivered',
-        attachments: attachments,
-      };
-      
-      setMessages((prev) => [...prev, userMessage]);
-      
-      // Create welcome assistant message
-      const welcomeMessage = `Perfect! I've received your ${fileCount > 1 ? 'files' : 'file'}: ${fileNames}. ${fileCount > 1 ? 'They have' : 'It has'} been processed and embedded successfully. I'm now ready to help you understand, analyze, or answer any questions about ${fileCount > 1 ? 'these documents' : 'this document'}. What would you like to know?`;
-      
-      const assistantMessage: Message = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: welcomeMessage,
-        timestamp: new Date(),
-        status: 'delivered',
-      };
-      
-      setMessages((prev) => [...prev, assistantMessage]);
-      
-      // Persist these messages to database
-      try {
-        await fetch('/api/save-messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            question: `📎 Uploaded ${fileCount} file${fileCount > 1 ? 's' : ''}: ${fileNames}`,
-            answer: welcomeMessage,
-            conversationId: activeConversationId,
-          }),
-        });
-        console.log('[ChatPanel] Saved file upload welcome messages');
-      } catch (saveError) {
-        console.error('[ChatPanel] Failed to save welcome messages:', saveError);
-      }
-      
-      return; // Don't proceed to LLM call
     }
 
     const userMessage: Message = {

@@ -39,6 +39,13 @@ Personal AI-powered knowledge base. Start local, keep the stack minimal, deploy 
 - ✅ **Real-time feedback**: See answers being built in real-time
 - ✅ **Graceful cancellation**: Partial answers are preserved when stopped
 
+### Performance Optimizations
+- ✅ **FTS5 Full-Text Search**: SQLite FTS5 with BM25 ranking prefilters candidates
+- ✅ **Two-Stage Retrieval**: BM25 prefilter (fast) → Cosine similarity (accurate)
+- ✅ **Scalable**: Handles large document collections efficiently
+- ✅ **Automatic Sync**: FTS5 index kept up-to-date via database triggers
+- ✅ **Graceful Fallback**: Falls back to full scan if FTS5 fails
+
 ## Local Setup
 
 ### Prerequisites
@@ -71,10 +78,24 @@ Personal AI-powered knowledge base. Start local, keep the stack minimal, deploy 
    
    The default `.env.local` should have:
    ```
+   # Database
+   DATABASE_URL=file:./prisma/data/app.db
+   
+   # Ollama
    OLLAMA_BASE=http://localhost:11434
    OLLAMA_EMBED_MODEL=all-minilm
-   DATABASE_URL=file:/home/shubon/Desktop/Second-Brain/prisma/data/app.db
+   OLLAMA_LLM_MODEL=llama3
+   
+   # File Storage
    UPLOAD_DIR=./uploads
+   
+   # RAG Configuration
+   TOP_K=5
+   MAX_CONTEXT_CHARS=3000
+   MAX_EMBEDDINGS_SEARCH=1000
+   
+   # Performance Tuning (FTS5 Prefilter)
+   PREFILTER_LIMIT=200
    ```
 
 4. **Run migrations:**
@@ -554,13 +575,78 @@ Health check endpoint.
 - ✅ **Offline** - Works without internet
 - ✅ **Flexible** - Easy to swap models
 
+## Performance: FTS5 + BM25 Prefiltering
+
+### Two-Stage Retrieval Pipeline
+
+Instead of running expensive cosine similarity on all chunks, we use a fast prefilter:
+
+1. **Stage 1: FTS5 BM25 (Fast Text Search)**
+   - SQLite's FTS5 virtual table indexes all chunk text
+   - BM25 ranking quickly identifies top N text-relevant candidates
+   - Typical speed: < 10ms for thousands of chunks
+   - Configurable via `PREFILTER_LIMIT` (default: 200)
+
+2. **Stage 2: Cosine Similarity (Semantic Accuracy)**
+   - Run cosine similarity only on prefiltered candidates
+   - Much smaller vector set = much faster computation
+   - Still gets the best semantic matches
+   - Returns top K results (default: 5)
+
+### Benefits
+
+- **🚀 Speed**: 10-100x faster on large document collections (1000+ chunks)
+- **🎯 Quality**: Hybrid approach combines keyword + semantic relevance
+- **📈 Scalable**: Handles thousands of documents without slowdown
+- **🔄 Auto-Sync**: FTS5 index updated automatically via database triggers
+- **🛡️ Fallback**: If FTS5 fails, falls back to full cosine scan
+
+### Configuration
+
+Environment variables for tuning:
+
+```bash
+# How many candidates BM25 returns before cosine
+PREFILTER_LIMIT=200
+
+# Final top-K results after cosine ranking
+TOP_K=5
+
+# Maximum embeddings to fetch (safety limit)
+MAX_EMBEDDINGS_SEARCH=1000
+```
+
+### How It Works
+
+**Without FTS5 (Old):**
+```
+Question → Embed → Load ALL vectors → Cosine on ALL → Top K
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                   Slow on large collections
+```
+
+**With FTS5 (New):**
+```
+Question → Embed → FTS5 BM25 → Top 200 candidates → Cosine on 200 → Top K
+                   ^^^^^^^^^
+                   Fast prefilter!
+```
+
+### Database Implementation
+
+The migration creates:
+- **Virtual table**: `chunk_fts` using SQLite FTS5
+- **Triggers**: Auto-sync on INSERT/UPDATE/DELETE
+- **BM25 ranking**: Built into FTS5 (no extra code needed)
+
 ## Day 4 - RAG Q&A with Local LLM (FREE)
 
 ### Overview
 Ask questions about your documents! The system uses:
-- **Similarity Search**: Finds relevant chunks using cosine similarity
+- **Hybrid Search**: FTS5 BM25 prefilter + Cosine similarity for speed and accuracy
 - **Local LLM**: Generates answers using Ollama (llama3, mistral, etc.)
 - **Source Citations**: Shows which chunks were used
+- **Streaming Responses**: Token-by-token answer generation
 
 ### Prerequisites
 

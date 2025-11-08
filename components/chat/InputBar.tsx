@@ -46,16 +46,17 @@ export default function InputBar({ conversationId, onSend, onUpload, showToast, 
     // Enter to send, Shift+Enter for newline
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      const hasContent = input.trim() || pendingAttachments.length > 0;
-      if (hasContent && !disabled) {
+      // Require text content to send manually
+      if (input.trim() && !disabled) {
         handleSend();
       }
     }
   };
 
   const handleSend = () => {
-    const hasContent = input.trim() || pendingAttachments.length > 0;
-    if (hasContent && !disabled) {
+    // Require text content for manual send
+    // File-only uploads are handled automatically via the auto-send-files event
+    if (input.trim() && !disabled) {
       onSend(input.trim(), pendingAttachments.length > 0 ? pendingAttachments : undefined);
       setInput('');
       setPendingAttachments([]); // Clear attachments after sending
@@ -122,11 +123,8 @@ export default function InputBar({ conversationId, onSend, onUpload, showToast, 
           sizeBytes: json.sizeBytes,
         });
         
-        // Show success with chunk count since auto-embed happened
-        const chunkInfo = json.autoEmbedded && json.chunksCreated 
-          ? ` — embedded ✓ (${json.chunksCreated} chunks)`
-          : '';
-        showToast(`Uploaded ${json.filename}${chunkInfo}`, 'success');
+        // Show simple success message
+        showToast('Successfully uploaded', 'success');
       } catch (error) {
         showToast(`Failed upload: ${file.name}`, 'error');
       }
@@ -140,11 +138,16 @@ export default function InputBar({ conversationId, onSend, onUpload, showToast, 
       console.log('[InputBar] Files uploaded, dispatching chat-activity event');
       window.dispatchEvent(new CustomEvent('chat-activity'));
       
-      // Auto-send message with just the attachments (no text needed)
-      setTimeout(() => {
-        onSend('', newAttachments);
-        setPendingAttachments([]);
-      }, 500); // Small delay to ensure state updates
+      // Dispatch custom event with conversation ID and attachments
+      // This ensures ChatPanel uses the correct conversation ID
+      window.dispatchEvent(new CustomEvent('auto-send-files', {
+        detail: {
+          conversationId: activeConversationId,
+          attachments: newAttachments,
+        }
+      }));
+      
+      setPendingAttachments([]);
     }
 
     setIsUploading(false);
@@ -255,7 +258,7 @@ export default function InputBar({ conversationId, onSend, onUpload, showToast, 
             type="button"
             onClick={handleSend}
             className={`${styles.inputButton} ${styles.send}`}
-            disabled={(!input.trim() && pendingAttachments.length === 0) || disabled || isUploading}
+            disabled={!input.trim() || disabled || isUploading}
             aria-label="Send message"
           >
             Send

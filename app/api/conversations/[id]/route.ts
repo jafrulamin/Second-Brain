@@ -92,39 +92,50 @@ export async function DELETE(
     const filePaths = documents.map((doc) => doc.originalPath);
     const documentIds = documents.map((doc) => doc.id);
 
-    // Delete the conversation (cascades to messages and message sources)
+    // Step 1: Delete the conversation (cascades to messages and message sources)
     await prisma.conversation.delete({
       where: { id: conversationId },
     });
 
-    // Manually delete embeddings, chunks, and documents
+    // At this point, the conversation is deleted from the DB
+    // Any subsequent errors in cleanup should not fail the request
+    
+    // Step 2: Manually delete embeddings, chunks, and documents
     // (SQLite onDelete: SetNull for documents means we need manual cleanup)
+    let docsRemoved = 0;
     if (documentIds.length > 0) {
-      // Delete embeddings for chunks of these documents
-      await prisma.embedding.deleteMany({
-        where: {
-          chunk: {
+      try {
+        // Delete embeddings for chunks of these documents
+        await prisma.embedding.deleteMany({
+          where: {
+            chunk: {
+              documentId: { in: documentIds },
+            },
+          },
+        });
+
+        // Delete chunks for these documents
+        await prisma.chunk.deleteMany({
+          where: {
             documentId: { in: documentIds },
           },
-        },
-      });
+        });
 
-      // Delete chunks for these documents
-      await prisma.chunk.deleteMany({
-        where: {
-          documentId: { in: documentIds },
-        },
-      });
-
-      // Delete the documents themselves
-      await prisma.document.deleteMany({
-        where: {
-          id: { in: documentIds },
-        },
-      });
+        // Delete the documents themselves
+        await prisma.document.deleteMany({
+          where: {
+            id: { in: documentIds },
+          },
+        });
+        
+        docsRemoved = documentIds.length;
+      } catch (cleanupError) {
+        console.error('[Delete] Error during document/chunk cleanup (non-fatal):', cleanupError);
+      }
     }
 
-    // Remove physical files from disk
+    // Step 3: Remove physical files from disk
+    // Note: File cleanup errors are logged but don't fail the request
     let filesRemoved = 0;
     for (const filePath of filePaths) {
       if (!filePath) continue;
@@ -144,17 +155,19 @@ export async function DELETE(
         await unlink(absolutePath);
         filesRemoved++;
       } catch (error: any) {
-        // Ignore missing files (already deleted)
+        // Log file cleanup errors but don't fail the request
         if (error.code !== 'ENOENT') {
           console.error(`[Delete] Failed to delete file ${filePath}:`, error);
         }
       }
     }
 
+    console.log(`[Delete] Successfully deleted conversation ${conversationId}, removed ${filesRemoved} files and ${docsRemoved} documents`);
+    
     return NextResponse.json({
       deleted: true,
       filesRemoved,
-      docsRemoved: documentIds.length,
+      docsRemoved,
     });
   } catch (error: any) {
     console.error('[Conversations] Error deleting conversation:', error);

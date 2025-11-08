@@ -17,6 +17,8 @@ const TOP_K = parseInt(process.env.TOP_K || '5', 10);
 const MAX_CONTEXT_CHARS = parseInt(process.env.MAX_CONTEXT_CHARS || '3000', 10);
 const OLLAMA_LLM_MODEL = process.env.OLLAMA_LLM_MODEL || 'llama3';
 const MAX_EMBEDDINGS_SEARCH = parseInt(process.env.MAX_EMBEDDINGS_SEARCH || '1000', 10);
+// FTS5 prefilter limit: how many candidates to retrieve via BM25 before cosine (default: 200)
+const PREFILTER_LIMIT = parseInt(process.env.PREFILTER_LIMIT || '200', 10);
 
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
@@ -64,18 +66,46 @@ export async function POST(request: NextRequest) {
     }
     const queryVector = questionEmbeddings[0];
 
-    // Fetch embeddings filtered by conversationId
+    // Step 1: Use FTS5 to prefilter candidates via BM25 (fast full-text search)
+    // Escape single quotes in the query for FTS5
+    const ftsQuery = question.replace(/'/g, "''");
+    
+    let candidateChunkIds: number[] = [];
+    
+    try {
+      // Query FTS5 virtual table to get top candidates by BM25 score
+      // Filter to only documents in this conversation
+      const ftsResults = await prisma.$queryRaw<Array<{ id: number; score: number }>>`
+        SELECT rowid as id, bm25(chunk_fts) as score
+        FROM chunk_fts
+        WHERE chunk_fts MATCH ${ftsQuery}
+          AND documentId IN (
+            SELECT id FROM Document WHERE conversationId = ${conversationId}
+          )
+        ORDER BY score
+        LIMIT ${PREFILTER_LIMIT}
+      `;
+      
+      candidateChunkIds = ftsResults.map(r => r.id);
+      console.log(`[Query Stream] FTS5 found ${candidateChunkIds.length} candidates via BM25`);
+    } catch (ftsError) {
+      console.error('[Query Stream] FTS5 prefilter failed, falling back to all chunks:', ftsError);
+      // Fall back to fetching all chunks for this conversation
+    }
+
+    // Step 2: Fetch embeddings for the prefiltered chunks (or all if FTS5 failed/found nothing)
     const embeddings = await prisma.embedding.findMany({
       take: MAX_EMBEDDINGS_SEARCH,
       where: {
         chunk: {
+          ...(candidateChunkIds.length > 0 
+            ? { id: { in: candidateChunkIds } } 
+            : {}
+          ),
           document: {
             conversationId: conversationId,
           },
         },
-      },
-      orderBy: {
-        createdAt: 'desc',
       },
       include: {
         chunk: {
@@ -97,6 +127,8 @@ export async function POST(request: NextRequest) {
         { status: 422, headers: { 'Content-Type': 'application/json' } }
       );
     }
+    
+    console.log(`[Query Stream] Processing ${embeddings.length} embeddings for cosine similarity`);
 
     // Build array for ranking
     const vectorRows = embeddings
