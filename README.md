@@ -124,12 +124,7 @@ PREFILTER_LIMIT=200                    # FTS5 candidates before cosine
 - If answers seem off-topic, raise `TOP_K` slightly
 - If slow before LLM, lower `PREFILTER_LIMIT`
 
-## Screenshots / Demo
 
-Place these files (add your own captures):
-- `docs/screenshots/home.png` – chat UI with PDFs listed
-- `docs/screenshots/answer.png` – an answer + citations
-- `docs/demo/demo.mp4` – 90s flow (new chat ➜ upload ➜ ask ➜ switch ➜ delete)
 
 ## Roadmap (post-V1)
 
