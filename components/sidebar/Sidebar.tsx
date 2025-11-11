@@ -92,6 +92,7 @@ export default function Sidebar({
     onNewChat();
   };
 
+
   return (
     <aside
       className={styles.sidebarContainer}

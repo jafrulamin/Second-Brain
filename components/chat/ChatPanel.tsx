@@ -407,9 +407,7 @@ export default function ChatPanel({
   return (
     <>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <HeaderBar
-          onOpenSettings={onOpenSettings}
-        />
+        <HeaderBar />
         <ProgressBar visible={inFlightRequest} />
         <MessageList messages={messages} />
         {isTyping && <TypingIndicator />}

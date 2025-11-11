@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+
     // Create question embedding
     const questionEmbeddings = await embedWithOllama([question]);
     if (questionEmbeddings.length === 0 || questionEmbeddings[0].length === 0) {

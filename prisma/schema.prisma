@@ -15,6 +15,7 @@ datasource db {
 model Conversation {
   id        Int       @id @default(autoincrement())
   title     String
+  pinned    Boolean   @default(false)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   messages  Message[]
