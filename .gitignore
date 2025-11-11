@@ -1,6 +1,7 @@
 # envs
 .env.local
 .env.*.local
+.appSoFar.md
 
 # uploads & data
 uploads/
