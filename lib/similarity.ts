@@ -21,16 +21,12 @@ export function cosine(a: number[], b: number[]): number {
     return 0;
   }
 
-  // Compute dot product
+  // Compute dot product and norms in a single loop (optimization)
   let dotProduct = 0;
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-  }
-
-  // Compute norms
   let normA = 0;
   let normB = 0;
   for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
     normA += a[i] * a[i];
     normB += b[i] * b[i];
   }
@@ -84,9 +80,9 @@ export function rankByCosine(
   }
   queryNorm = Math.sqrt(queryNorm);
 
-  // Use a min-heap approach: keep only top K in memory
-  // This is more memory efficient than sorting all items
-  const topKHeap: Array<{
+  // Calculate similarities for all vectors and keep only top K
+  // Using a more efficient approach: calculate all, then sort once
+  const results: Array<{
     id: number;
     vector: number[];
     docId: number;
@@ -96,49 +92,31 @@ export function rankByCosine(
     similarity: number;
   }> = [];
 
-  // Process vectors in batches to avoid blocking
-  const BATCH_SIZE = 100;
-  for (let i = 0; i < vectors.length; i += BATCH_SIZE) {
-    const batch = vectors.slice(i, Math.min(i + BATCH_SIZE, vectors.length));
+  // Process all vectors and calculate similarities
+  for (const item of vectors) {
+    // Optimized cosine similarity calculation in single loop
+    let dotProduct = 0;
+    let itemNorm = 0;
     
-    for (const item of batch) {
-      // Optimized cosine similarity calculation
-      let dotProduct = 0;
-      let itemNorm = 0;
-      
-      for (let j = 0; j < query.length; j++) {
-        dotProduct += query[j] * item.vector[j];
-        itemNorm += item.vector[j] * item.vector[j];
-      }
-      itemNorm = Math.sqrt(itemNorm);
-      
-      const similarity = itemNorm > 0 && queryNorm > 0 
-        ? dotProduct / (queryNorm * itemNorm)
-        : 0;
-
-      // Maintain top K heap (simple approach: keep array sorted)
-      if (topKHeap.length < topK) {
-        topKHeap.push({
-          ...item,
-          similarity,
-        });
-        // Sort descending when we reach capacity
-        if (topKHeap.length === topK) {
-          topKHeap.sort((a, b) => b.similarity - a.similarity);
-        }
-      } else if (similarity > topKHeap[topKHeap.length - 1].similarity) {
-        // Replace the smallest if current is better
-        topKHeap[topKHeap.length - 1] = {
-          ...item,
-          similarity,
-        };
-        // Re-sort (only the last element might be out of order)
-        topKHeap.sort((a, b) => b.similarity - a.similarity);
-      }
+    for (let j = 0; j < query.length; j++) {
+      dotProduct += query[j] * item.vector[j];
+      itemNorm += item.vector[j] * item.vector[j];
     }
+    itemNorm = Math.sqrt(itemNorm);
+    
+    const similarity = itemNorm > 0 && queryNorm > 0 
+      ? dotProduct / (queryNorm * itemNorm)
+      : 0;
+
+    results.push({
+      ...item,
+      similarity,
+    });
   }
 
-  // Return top K sorted by similarity (descending)
-  return topKHeap.sort((a, b) => b.similarity - a.similarity);
+  // Sort once and take top K (more efficient than maintaining heap with repeated sorts)
+  // For typical use cases (hundreds of vectors, K=5-20), a single sort is faster
+  results.sort((a, b) => b.similarity - a.similarity);
+  return results.slice(0, topK);
 }
 

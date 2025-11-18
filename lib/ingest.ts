@@ -80,7 +80,8 @@ export async function embedDocument(documentId: number): Promise<EmbedResult> {
     throw new Error('No chunks could be created from the extracted text');
   }
 
-  // Insert all chunks into database
+  // Insert all chunks into database and get their IDs
+  // Note: SQLite doesn't support RETURNING in createMany, so we need to fetch after insert
   const chunkRecords = await prisma.chunk.createMany({
     data: chunks.map((chunk) => ({
       documentId: documentId,
@@ -91,8 +92,14 @@ export async function embedDocument(documentId: number): Promise<EmbedResult> {
   });
 
   // Retrieve the inserted chunks to get their IDs
+  // Optimization: Only select the fields we need
   const insertedChunks = await prisma.chunk.findMany({
     where: { documentId: documentId },
+    select: {
+      id: true,
+      text: true,
+      chunkIndex: true,
+    },
     orderBy: { chunkIndex: 'asc' },
   });
 

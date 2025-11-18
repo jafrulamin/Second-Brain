@@ -57,12 +57,9 @@ export function chunkText(
       break;
     }
     
-    startIndex = endIndex - overlap;
-    
-    // Ensure we make progress even with large overlap
-    if (startIndex <= chunks[chunks.length - 1]?.index || startIndex < 0) {
-      startIndex = endIndex;
-    }
+    // Simplified overlap logic: always move forward by (chunkSize - overlap)
+    // This ensures we always make progress
+    startIndex += chunkSize - overlap;
   }
 
   return chunks;
