@@ -30,6 +30,7 @@ export function buildContext(
 
   const contextParts: string[] = [];
   const sources: { filename: string; chunkIndex: number }[] = [];
+  const seenSources = new Set<string>(); // Track seen sources efficiently
   let currentLength = 0;
 
   for (const chunk of chosen) {
@@ -45,9 +46,10 @@ export function buildContext(
     contextParts.push(chunkText);
     currentLength += chunkLength;
 
-    // Track source (avoid duplicates)
+    // Track source (avoid duplicates using Set for O(1) lookup)
     const sourceKey = `${chunk.filename}#${chunk.chunkIndex}`;
-    if (!sources.some((s) => `${s.filename}#${s.chunkIndex}` === sourceKey)) {
+    if (!seenSources.has(sourceKey)) {
+      seenSources.add(sourceKey);
       sources.push({
         filename: chunk.filename,
         chunkIndex: chunk.chunkIndex,
